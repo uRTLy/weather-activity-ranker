@@ -77,3 +77,9 @@ Validate consecutive dates in the provider parser and local-week coverage before
 retries, cached midnight crossings in UTC/Tokyo/Los Angeles, Warsaw DST changes and the year boundary.
 The second review found that seven provider rows still passed and would run short after midnight. Added a rejection/recovery
 test and require at least eight days before caching. Live GraphQL checks for Lisbon, Warsaw and Innsbruck returned full weeks.
+
+## 02.10.2026 — persistence check
+
+Added a GraphQL test using a temporary SQLite file. Close the database and rebuild the app, then disable the provider: the
+fresh stored ranking is identical, with no upstream calls. After expiry, the restarted app attempts a refresh and returns the
+typed provider error. This verifies persistence and TTL through the public API rather than querying the cache table.

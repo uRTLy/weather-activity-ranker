@@ -11,7 +11,7 @@ mock.method(console, 'error', () => {}); // the tests trigger thousands of logge
 const fill = (dates: string[], v: number) => dates.map(() => v);
 
 // A fresh app wired to a fake Open-Meteo. Swap `upstream.place/weather/marine` to shape responses.
-export function setup() {
+export function setup(dbPath = ':memory:') {
   const clock = { now: START };
   const upstream = {
     calls: { geocoding: 0, forecast: 0, marine: 0 },
@@ -50,7 +50,8 @@ export function setup() {
     return Response.json({ daily: upstream[endpoint](dates) });
   };
 
-  const app = createApp({ db: openDb(':memory:'), fetch: fetch as typeof globalThis.fetch, now: () => clock.now });
+  const db = openDb(dbPath);
+  const app = createApp({ db, fetch: fetch as typeof globalThis.fetch, now: () => clock.now });
   const query = async (place: string, countryCode?: string | null) => {
     const res = await app.fetch('http://test/graphql', {
       method: 'POST',
@@ -63,5 +64,5 @@ export function setup() {
     });
     return res.json() as Promise<any>;
   };
-  return { upstream, clock, query };
+  return { upstream, clock, query, close: () => db.close() };
 }
