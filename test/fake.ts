@@ -21,6 +21,10 @@ export function setup() {
       name.startsWith('Nowhere')
         ? undefined
         : { name, country: 'Portugal', latitude: 38 + name.length / 10, longitude: -9.1, timezone: 'UTC' },
+    geocoding: (name: string): any => {
+      const place = upstream.place(name);
+      return place ? { results: [place].flat() } : {};
+    },
     forecast: (dates: string[]): any => ({
       time: dates,
       temperature_2m_max: fill(dates, 18),
@@ -40,8 +44,7 @@ export function setup() {
     upstream.calls[endpoint]++;
     if (upstream.failing) return new Response('down', { status: 503 });
     if (endpoint === 'geocoding') {
-      const place = upstream.place(url.searchParams.get('name')!);
-      return Response.json(place ? { results: [place].flat() } : {});
+      return Response.json(upstream.geocoding(url.searchParams.get('name')!));
     }
     const dates = Array.from({ length: Number(url.searchParams.get('forecast_days')) }, (_, i) => isoDay(clock.now + i * 24 * HOUR));
     return Response.json({ daily: upstream[endpoint](dates) });

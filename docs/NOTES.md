@@ -62,3 +62,10 @@ After pushing the scoring fix, chose the weather/marine length check next: it pr
 Added GraphQL cases for 6, 7 and 9 marine rows against 8 weather rows, including successful retry after a corrected response.
 The two shorter responses reproduced the bug; the longer response was already rejected. Added an equal-length check before
 joining rows. Kept geocoding and calendar validation separate.
+
+## 02.10.2026 — geocoding validation
+
+Chose geocoding next because bad locations could be cached for 30 days and then fail as internal errors. Reproduced null
+candidates, invalid timezones and malformed response envelopes through GraphQL. Validate before selection and caching;
+check every candidate, including name, coordinates, optional population/country, and the timezone accepted by Intl.
+Tests also cover recovery after a corrected response and preserve the no-results `PLACE_NOT_FOUND` behavior.

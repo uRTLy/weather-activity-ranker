@@ -173,3 +173,57 @@ for (const marineDays of [6, 7, 9]) {
     assert.equal(upstream.calls.marine, 2);
   });
 }
+
+for (const [label, candidate] of [
+  ['null candidate', null],
+  ['primitive candidate', 'Lisbon'],
+  ['invalid timezone', { timezone: 'invalid/timezone' }],
+  ['empty name', { name: '' }],
+  ['invalid population', { population: 'large' }],
+] as const) {
+  test(`rejects geocoding ${label} before caching and recovers`, async () => {
+    const { upstream, query } = setup();
+    const place = upstream.place;
+    upstream.place = (name) => [typeof candidate === 'object' && candidate !== null ? { ...place(name), ...candidate } : candidate];
+
+    const rejected = await query('Lisbon');
+    assert.equal(rejected.errors?.[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+    assert.equal(upstream.calls.forecast, 0);
+    assert.equal(upstream.calls.marine, 0);
+
+    upstream.place = place;
+    assert.equal((await query('Lisbon')).errors, undefined);
+    assert.equal(upstream.calls.geocoding, 2);
+  });
+}
+
+for (const payload of [null, [], 'invalid', { results: null }, { results: {} }]) {
+  test(`rejects malformed geocoding response ${JSON.stringify(payload)} and recovers`, async () => {
+    const { upstream, query } = setup();
+    const geocoding = upstream.geocoding;
+    upstream.geocoding = () => payload;
+
+    const rejected = await query('Lisbon');
+    assert.equal(rejected.errors?.[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+    assert.equal(upstream.calls.forecast, 0);
+
+    upstream.geocoding = geocoding;
+    assert.equal((await query('Lisbon')).errors, undefined);
+    assert.equal(upstream.calls.geocoding, 2);
+  });
+}
+
+test('rejects malformed candidates even when another candidate matches the requested name', async () => {
+  const { upstream, query } = setup();
+  const place = upstream.place;
+  upstream.place = (name) => [place(name), { ...place('Other'), timezone: 'invalid/timezone' }];
+  assert.equal((await query('Lisbon')).errors?.[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+  assert.equal(upstream.calls.forecast, 0);
+});
+
+test('an empty geocoding results array still means place not found', async () => {
+  const { upstream, query } = setup();
+  upstream.geocoding = () => ({ results: [] });
+  assert.equal((await query('Lisbon')).errors?.[0].extensions.code, 'PLACE_NOT_FOUND');
+  assert.equal(upstream.calls.forecast, 0);
+});

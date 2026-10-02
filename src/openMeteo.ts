@@ -48,21 +48,36 @@ export function createOpenMeteo(fetchImpl: typeof fetch = fetch) {
     // most populous first ("Paris" -> Paris, FR unless countryCode says otherwise).
     async geocode(name: string, countryCode?: string | null): Promise<Location | undefined> {
       const q = new URLSearchParams({ name, count: '10', ...(countryCode ? { countryCode } : {}) });
-      const results: any[] = (await get(`https://geocoding-api.open-meteo.com/v1/search?${q}`)).results ?? [];
+      const response = await get(`https://geocoding-api.open-meteo.com/v1/search?${q}`);
+      if (response === null || typeof response !== 'object' || Array.isArray(response)) unavailable('malformed geocoding response');
+      const results: any[] = response.results === undefined ? [] : response.results;
       if (!Array.isArray(results)) unavailable('malformed geocoding results');
+      // Validate before name matching, sorting or caching; one malformed candidate invalidates the response.
+      for (const r of results) {
+        if (
+          r === null ||
+          typeof r !== 'object' ||
+          Array.isArray(r) ||
+          typeof r.name !== 'string' ||
+          !r.name.trim() ||
+          !Number.isFinite(r.latitude) ||
+          Math.abs(r.latitude) > 90 ||
+          !Number.isFinite(r.longitude) ||
+          Math.abs(r.longitude) > 180 ||
+          typeof r.timezone !== 'string' ||
+          (r.country !== undefined && typeof r.country !== 'string') ||
+          (r.population !== undefined && (!Number.isFinite(r.population) || r.population < 0))
+        )
+          unavailable('malformed place');
+        try {
+          new Intl.DateTimeFormat('en', { timeZone: r.timezone });
+        } catch {
+          unavailable('invalid place timezone');
+        }
+      }
       const exact = results.filter((r) => plain(r.name) === plain(name)).sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
       const r = exact[0] ?? results.sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
       if (!r) return undefined;
-      if (
-        typeof r.name !== 'string' ||
-        !Number.isFinite(r.latitude) ||
-        Math.abs(r.latitude) > 90 ||
-        !Number.isFinite(r.longitude) ||
-        Math.abs(r.longitude) > 180 ||
-        typeof r.timezone !== 'string' ||
-        (r.country !== undefined && typeof r.country !== 'string')
-      )
-        unavailable('malformed place');
       return { name: r.name, country: r.country, latitude: r.latitude, longitude: r.longitude, timezone: r.timezone };
     },
 

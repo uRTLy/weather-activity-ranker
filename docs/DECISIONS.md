@@ -4,8 +4,14 @@
 
 The first review found that an array of strings passed the old length check and could be cached as weather. Keep the small hand-written parser, but check dates, numeric values, and marine/weather date alignment before writing to SQLite. Malformed provider data becomes `UPSTREAM_UNAVAILABLE`.
 
-Remaining gaps: date checks only validate string shape, and invalid geocoding
-candidates or timezones can become internal errors. Fix these separately from scoring.
+Remaining gap: date checks only validate string shape. Calendar validation is a separate fix.
+
+## 02.10.2026 review: validate geocoding before selection
+
+Null candidates and unsupported timezones became internal errors; malformed response envelopes could look like a missing place.
+Validate the envelope, every candidate and runtime-supported timezone before matching names, sorting or caching. Reject the
+whole response if a candidate is malformed rather than guessing from the rest. Missing `results` or an empty array still means
+`PLACE_NOT_FOUND`; malformed data means `UPSTREAM_UNAVAILABLE`. Keep the small parser and the existing selection policy.
 
 ## 02.10.2026 review: require matching forecast rows
 
