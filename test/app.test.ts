@@ -152,3 +152,24 @@ test('missing weather inputs cannot produce a perfect sightseeing score', async 
     }
   }
 });
+
+for (const marineDays of [6, 7, 9]) {
+  test(`rejects different row counts (8 weather, ${marineDays} marine) before caching and recovers`, async () => {
+    const { upstream, query } = setup();
+    const marine = upstream.marine;
+    upstream.marine = (dates) => marine([...dates, '2026-01-18'].slice(0, marineDays));
+
+    const rejected = await query('Lisbon');
+    assert.equal(rejected.errors?.[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+
+    upstream.marine = marine;
+    const recovered = await query('Lisbon');
+    assert.equal(recovered.errors, undefined);
+    const surfing = recovered.data.activityRanking.activities.find((a: any) => a.activity === 'SURFING');
+    assert.equal(surfing.status, 'SCORED');
+    assert.equal(surfing.days.length, 7);
+    assert.equal(surfing.weeklyScore, 100);
+    assert.equal(upstream.calls.forecast, 2);
+    assert.equal(upstream.calls.marine, 2);
+  });
+}

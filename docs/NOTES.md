@@ -55,3 +55,10 @@ Review reproduced a perfect surfing week with a missing marine day, and perfect 
 Changed the API from `available` to `SCORED`, `UNKNOWN`, or `UNAVAILABLE`. Missing required inputs leave the day and weekly
 scores unknown; complete days keep their scores. Kept the four scoring functions. Deferred resort lookup and the separate
 provider/date-validation fixes.
+
+## 02.10.2026 — matching forecast rows
+
+After pushing the scoring fix, chose the weather/marine length check next: it prevents incomplete rows entering SQLite.
+Added GraphQL cases for 6, 7 and 9 marine rows against 8 weather rows, including successful retry after a corrected response.
+The two shorter responses reproduced the bug; the longer response was already rejected. Added an equal-length check before
+joining rows. Kept geocoding and calendar validation separate.

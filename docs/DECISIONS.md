@@ -4,8 +4,15 @@
 
 The first review found that an array of strings passed the old length check and could be cached as weather. Keep the small hand-written parser, but check dates, numeric values, and marine/weather date alignment before writing to SQLite. Malformed provider data becomes `UPSTREAM_UNAVAILABLE`.
 
-Remaining gaps: date checks only validate string shape, marine arrays can be shorter than weather arrays, and invalid geocoding
+Remaining gaps: date checks only validate string shape, and invalid geocoding
 candidates or timezones can become internal errors. Fix these separately from scoring.
+
+## 02.10.2026 review: require matching forecast rows
+
+A shorter marine response passed date alignment because the check only visited its own rows. Require equal weather and marine
+row counts before joining or caching. Missing values in a present row stay `null`; a missing row is a malformed response and
+returns `UPSTREAM_UNAVAILABLE`. Chose this next because otherwise incomplete provider data remains cached for 3 h. Keep
+geocoding and calendar validation as separate fixes.
 
 ## 02.10.2026 review: require a full week
 

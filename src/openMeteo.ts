@@ -74,7 +74,12 @@ export function createOpenMeteo(fetchImpl: typeof fetch = fetch) {
         get(`https://marine-api.open-meteo.com/v1/marine?${q}${Object.values(MARINE).join()}`),
       ]);
       // Checked before caching, so a malformed response is never served for the next 3 h.
-      if (!complete(w, WEATHER) || !complete(m, MARINE) || m.time.some((date: string, i: number) => date !== w.time[i]))
+      if (
+        !complete(w, WEATHER) ||
+        !complete(m, MARINE) ||
+        w.time.length !== m.time.length ||
+        m.time.some((date: string, i: number) => date !== w.time[i])
+      )
         unavailable('incomplete forecast');
       return w.time.map((date: string, i: number) => ({ date, ...row(w, WEATHER, i), ...row(m, MARINE, i) }));
     },
