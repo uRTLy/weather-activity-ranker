@@ -71,6 +71,28 @@ test('does not cache an incomplete upstream forecast', async () => {
   assert.equal(upstream.calls.forecast, 2);
 });
 
+test('rejects malformed values and misaligned marine dates before caching', async () => {
+  const { upstream, query } = setup();
+  const weather = upstream.forecast;
+  upstream.forecast = (dates) => ({ ...weather(dates), temperature_2m_max: dates.map(() => 'warm') });
+  assert.equal((await query('Lisbon')).errors[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+
+  upstream.forecast = weather;
+  const marine = upstream.marine;
+  upstream.marine = (dates) => ({ ...marine(dates), time: dates.map(() => '2026-01-01') });
+  assert.equal((await query('Lisbon')).errors[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+
+  upstream.marine = marine;
+  assert.equal((await query('Lisbon')).errors, undefined);
+  assert.equal(upstream.calls.forecast, 3);
+});
+
+test('reports malformed geocoding results as a provider error', async () => {
+  const { upstream, query } = setup();
+  upstream.place = () => ({ name: 'Lisbon', latitude: NaN, longitude: -9, timezone: 'UTC' });
+  assert.equal((await query('Lisbon')).errors[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+});
+
 test('prefers an exact name match over a bigger fuzzy one', async () => {
   const { upstream, query } = setup();
   const at = (name: string, country: string, population: number) => ({

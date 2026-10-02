@@ -15,7 +15,7 @@ const MARINE = { waveHeight: 'wave_height_max', wavePeriod: 'wave_period_max' } 
 // Any value may be null. Marine values are all null inland - that is how we know surfing is impossible.
 export type DayWeather = { date: string } & Record<keyof typeof WEATHER | keyof typeof MARINE, number | null>;
 
-// Any provider fault. The server log gets the detail; app.ts shows clients a generic retryable error.
+// Provider faults become a retryable GraphQL error; keep the detail for diagnostics.
 export class UpstreamError extends Error {}
 export const unavailable = (detail: string): never => {
   throw new UpstreamError(`Open-Meteo: ${detail}`);
@@ -33,7 +33,15 @@ export function createOpenMeteo(fetchImpl: typeof fetch = fetch) {
   const row = (daily: any, fields: Record<string, string>, i: number) =>
     Object.fromEntries(Object.entries(fields).map(([ours, theirs]) => [ours, daily[theirs][i]]));
   const complete = (daily: any, fields: Record<string, string>) =>
-    Array.isArray(daily?.time) && Object.values(fields).every((f) => daily[f]?.length === daily.time.length);
+    Array.isArray(daily?.time) &&
+    daily.time.length > 0 &&
+    daily.time.every((date: unknown) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) &&
+    Object.values(fields).every(
+      (field) =>
+        Array.isArray(daily[field]) &&
+        daily[field].length === daily.time.length &&
+        daily[field].every((value: unknown) => value === null || (typeof value === 'number' && Number.isFinite(value))),
+    );
 
   return {
     // Search also hits alternate names ("Venice" ranks Dayton, OH first), so prefer an exact name match,
@@ -41,10 +49,19 @@ export function createOpenMeteo(fetchImpl: typeof fetch = fetch) {
     async geocode(name: string, countryCode?: string | null): Promise<Location | undefined> {
       const q = new URLSearchParams({ name, count: '10', ...(countryCode ? { countryCode } : {}) });
       const results: any[] = (await get(`https://geocoding-api.open-meteo.com/v1/search?${q}`)).results ?? [];
+      if (!Array.isArray(results)) unavailable('malformed geocoding results');
       const exact = results.filter((r) => plain(r.name) === plain(name)).sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
-      const r = exact[0] ?? results[0];
+      const r = exact[0] ?? results.sort((a, b) => (b.population ?? 0) - (a.population ?? 0))[0];
       if (!r) return undefined;
-      if (typeof r.name !== 'string' || typeof r.latitude !== 'number' || typeof r.longitude !== 'number' || typeof r.timezone !== 'string')
+      if (
+        typeof r.name !== 'string' ||
+        !Number.isFinite(r.latitude) ||
+        Math.abs(r.latitude) > 90 ||
+        !Number.isFinite(r.longitude) ||
+        Math.abs(r.longitude) > 180 ||
+        typeof r.timezone !== 'string' ||
+        (r.country !== undefined && typeof r.country !== 'string')
+      )
         unavailable('malformed place');
       return { name: r.name, country: r.country, latitude: r.latitude, longitude: r.longitude, timezone: r.timezone };
     },
@@ -57,7 +74,8 @@ export function createOpenMeteo(fetchImpl: typeof fetch = fetch) {
         get(`https://marine-api.open-meteo.com/v1/marine?${q}${Object.values(MARINE).join()}`),
       ]);
       // Checked before caching, so a malformed response is never served for the next 3 h.
-      if (!complete(w, WEATHER) || !complete(m, MARINE) || m.time.length !== w.time.length) unavailable('incomplete forecast');
+      if (!complete(w, WEATHER) || !complete(m, MARINE) || m.time.some((date: string, i: number) => date !== w.time[i]))
+        unavailable('incomplete forecast');
       return w.time.map((date: string, i: number) => ({ date, ...row(w, WEATHER, i), ...row(m, MARINE, i) }));
     },
   };

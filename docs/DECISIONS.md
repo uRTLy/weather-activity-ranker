@@ -1,5 +1,9 @@
 # Decisions
 
+## 02.10.2026 review: validate before storing
+
+The first review found that an array of strings passed the old length check and could be cached as weather. Keep the small hand-written parser, but check dates, numeric values, and marine/weather date alignment before writing to SQLite. Malformed provider data becomes `UPSTREAM_UNAVAILABLE`.
+
 ## Stack
 
 Node 24 with native TypeScript (no build), GraphQL Yoga, `node:sqlite` (no native deps, one-command setup), `node:test` + fast-check.
