@@ -69,3 +69,11 @@ Chose geocoding next because bad locations could be cached for 30 days and then 
 candidates, invalid timezones and malformed response envelopes through GraphQL. Validate before selection and caching;
 check every candidate, including name, coordinates, optional population/country, and the timezone accepted by Intl.
 Tests also cover recovery after a corrected response and preserve the no-results `PLACE_NOT_FOUND` behavior.
+
+## 02.10.2026 — calendar coverage
+
+Reproduced five accepted bad forecasts: duplicate, skipped, reversed, impossible dates and a week starting tomorrow.
+Validate consecutive dates in the provider parser and local-week coverage before caching and on read. Tests cover corrected
+retries, cached midnight crossings in UTC/Tokyo/Los Angeles, Warsaw DST changes and the year boundary.
+The second review found that seven provider rows still passed and would run short after midnight. Added a rejection/recovery
+test and require at least eight days before caching. Live GraphQL checks for Lisbon, Warsaw and Innsbruck returned full weeks.

@@ -3,7 +3,7 @@ import { GraphQLError } from 'graphql';
 import { EnvelopArmorPlugin } from '@escape.tech/graphql-armor';
 import { createSchema, createYoga, maskError } from 'graphql-yoga';
 import { createCache } from './cache.ts';
-import { createOpenMeteo, unavailable, UpstreamError } from './openMeteo.ts';
+import { createOpenMeteo, unavailable, UpstreamError, type DayWeather } from './openMeteo.ts';
 import { rankActivities } from './scoring.ts';
 
 const HOUR = 3_600_000;
@@ -66,6 +66,15 @@ const typeDefs = /* GraphQL */ `
 const gridKey = (n: number) => Math.round(n * 100) / 100;
 const localDate = (timeZone: string, ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(ms); // YYYY-MM-DD
 
+function forecastWeek(days: DayWeather[], today: string) {
+  const week = days.filter((d) => d.date >= today).slice(0, 7);
+  // Advance calendar labels in UTC, not local elapsed hours (DST days can have 23 or 25 hours).
+  const start = Date.parse(`${today}T00:00:00Z`);
+  if (week.length !== 7 || week.some((d, i) => d.date !== new Date(start + i * 86_400_000).toISOString().slice(0, 10)))
+    unavailable('forecast does not cover seven consecutive local days');
+  return week;
+}
+
 // Everything with side effects is injected, so tests run offline with a fake clock.
 type Deps = { db: DatabaseSync; fetch?: typeof globalThis.fetch; now?: () => number };
 
@@ -87,11 +96,12 @@ export function createApp({ db, fetch = globalThis.fetch, now = Date.now }: Deps
       return found;
     });
     const [lat, lon] = [gridKey(location.latitude), gridKey(location.longitude)];
-    const forecast = await cached(`wx:${lat},${lon}`, 3 * HOUR, () => meteo.forecast(lat, lon));
-
-    const today = localDate(location.timezone, now());
-    const week = forecast.value.filter((d) => d.date >= today).slice(0, 7);
-    if (week.length !== 7) unavailable(`forecast for ${lat},${lon} does not cover seven days`);
+    const forecast = await cached(`wx:${lat},${lon}`, 3 * HOUR, async () => {
+      const days = await meteo.forecast(lat, lon);
+      forecastWeek(days, localDate(location.timezone, now())); // Reject insufficient coverage before caching.
+      return days;
+    });
+    const week = forecastWeek(forecast.value, localDate(location.timezone, now()));
     return {
       location,
       fetchedAt: new Date(forecast.fetchedAt).toISOString(),

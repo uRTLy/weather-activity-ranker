@@ -4,7 +4,13 @@
 
 The first review found that an array of strings passed the old length check and could be cached as weather. Keep the small hand-written parser, but check dates, numeric values, and marine/weather date alignment before writing to SQLite. Malformed provider data becomes `UPSTREAM_UNAVAILABLE`.
 
-Remaining gap: date checks only validate string shape. Calendar validation is a separate fix.
+## 02.10.2026 review: validate calendar coverage
+
+Seven rows could contain duplicate, skipped, reversed or impossible dates. Require real consecutive calendar dates in both
+provider responses, then require the selected week to run from local today through today + 6. Check coverage before caching
+and again on read because a fresh entry may cross local midnight. Require at least eight provider days to cover that boundary;
+seven valid days would otherwise become six while the cache is still fresh. Advance date
+labels using UTC calendar arithmetic so DST does not skip or repeat a day. Reject bad coverage with `UPSTREAM_UNAVAILABLE`.
 
 ## 02.10.2026 review: validate geocoding before selection
 
@@ -71,7 +77,7 @@ its own `UpstreamError`, `app.ts` maps it; the client does not know about GraphQ
 - Input allow-list: `place` letters (any script), digits, `.,'’()-`, max 100. `countryCode` two letters.
 - graphql-armor: max 3 aliases (each can mean upstream calls), plus depth/cost/token limits.
 - SQL via prepared statements only.
-- Numeric columns and basic response shape checked before caching; the remaining date and geocoding gaps are listed above.
+- Geocoding fields/timezones, forecast numeric columns, matching rows and consecutive calendar dates checked before caching.
 - Per-IP rate limit, request timeout, 10 s upstream timeout, graceful shutdown. GraphiQL off in production.
 
 ## Known, left out on purpose

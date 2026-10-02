@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { HOUR, setup } from './fake.ts';
+import { HOUR, isoDay, setup } from './fake.ts';
 
 test('ranks activities for 7 local days, best first', async () => {
   const { query } = setup();
@@ -227,3 +227,85 @@ test('an empty geocoding results array still means place not found', async () =>
   assert.equal((await query('Lisbon')).errors?.[0].extensions.code, 'PLACE_NOT_FOUND');
   assert.equal(upstream.calls.forecast, 0);
 });
+
+for (const shape of ['duplicate', 'gap', 'reversed', 'invalid', 'future', 'short'] as const) {
+  test(`rejects ${shape} forecast dates before caching and recovers`, async () => {
+    const { upstream, query } = setup();
+    const forecast = upstream.forecast;
+    const marine = upstream.marine;
+    const malformed = (dates: string[]) => {
+      if (shape === 'duplicate') return dates.map(() => dates[0]);
+      if (shape === 'gap') return [...dates.slice(0, 3), ...dates.slice(4), '2026-01-18'];
+      if (shape === 'reversed') return [...dates].reverse();
+      if (shape === 'invalid') return dates.map(() => '2026-02-30');
+      if (shape === 'short') return dates.slice(0, -1);
+      return dates.map((date) => isoDay(Date.parse(date) + 24 * HOUR));
+    };
+    upstream.forecast = (dates) => forecast(malformed(dates));
+    upstream.marine = (dates) => marine(malformed(dates));
+
+    assert.equal((await query('Lisbon')).errors?.[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
+    upstream.forecast = forecast;
+    upstream.marine = marine;
+    const { data, errors } = await query('Lisbon');
+    assert.equal(errors, undefined);
+    assert.deepEqual(
+      data.activityRanking.activities[0].days.map((day: any) => day.date),
+      ['2026-01-10', '2026-01-11', '2026-01-12', '2026-01-13', '2026-01-14', '2026-01-15', '2026-01-16'],
+    );
+    assert.equal(upstream.calls.forecast, 2);
+  });
+}
+
+for (const [zone, start, localToday] of [
+  ['UTC', '2026-01-10T23:30:00Z', '2026-01-10'],
+  ['Asia/Tokyo', '2026-01-10T14:30:00Z', '2026-01-10'],
+  ['America/Los_Angeles', '2026-01-11T07:30:00Z', '2026-01-10'],
+] as const) {
+  test(`fresh cached forecast covers seven local days across midnight in ${zone}`, async () => {
+    const { upstream, clock, query } = setup();
+    clock.now = Date.parse(start);
+    const place = upstream.place;
+    upstream.place = (name) => ({ ...place(name), timezone: zone });
+    const dates = ['2026-01-10', '2026-01-11', '2026-01-12', '2026-01-13', '2026-01-14', '2026-01-15', '2026-01-16', '2026-01-17'];
+    const forecast = upstream.forecast;
+    const marine = upstream.marine;
+    upstream.forecast = () => forecast(dates);
+    upstream.marine = () => marine(dates);
+    const before = await query('Lisbon');
+    assert.equal(before.errors, undefined);
+    assert.equal(before.data.activityRanking.activities[0].days[0].date, localToday);
+
+    clock.now += HOUR;
+    const { data, errors } = await query('Lisbon');
+    assert.equal(errors, undefined);
+    assert.deepEqual(
+      data.activityRanking.activities[0].days.map((day: any) => day.date),
+      dates.slice(1),
+    );
+    assert.equal(upstream.calls.forecast, 1);
+  });
+}
+
+for (const [label, start, first, last] of [
+  ['spring DST', '2026-03-29T00:30:00Z', '2026-03-29', '2026-04-04'],
+  ['autumn DST', '2026-10-25T00:30:00Z', '2026-10-25', '2026-10-31'],
+  ['year boundary', '2026-12-31T09:00:00Z', '2026-12-31', '2027-01-06'],
+] as const) {
+  test(`returns seven calendar days across ${label}`, async () => {
+    const { upstream, clock, query } = setup();
+    clock.now = Date.parse(start);
+    const place = upstream.place;
+    upstream.place = (name) => ({ ...place(name), timezone: 'Europe/Warsaw' });
+    for (const step of [0, HOUR]) {
+      clock.now += step;
+      const { data, errors } = await query('Lisbon');
+      assert.equal(errors, undefined);
+      const days = data.activityRanking.activities[0].days;
+      assert.equal(days.length, 7);
+      assert.equal(days[0].date, first);
+      assert.equal(days[6].date, last);
+    }
+    assert.equal(upstream.calls.forecast, 1);
+  });
+}

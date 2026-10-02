@@ -35,7 +35,15 @@ export function createOpenMeteo(fetchImpl: typeof fetch = fetch) {
   const complete = (daily: any, fields: Record<string, string>) =>
     Array.isArray(daily?.time) &&
     daily.time.length > 0 &&
-    daily.time.every((date: unknown) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) &&
+    daily.time.every((date: unknown, i: number) => {
+      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+      const ms = Date.parse(`${date}T00:00:00Z`);
+      return (
+        Number.isFinite(ms) &&
+        new Date(ms).toISOString().slice(0, 10) === date &&
+        (i === 0 || ms - Date.parse(`${daily.time[i - 1]}T00:00:00Z`) === 86_400_000)
+      );
+    }) &&
     Object.values(fields).every(
       (field) =>
         Array.isArray(daily[field]) &&
@@ -92,6 +100,7 @@ export function createOpenMeteo(fetchImpl: typeof fetch = fetch) {
       if (
         !complete(w, WEATHER) ||
         !complete(m, MARINE) ||
+        w.time.length < 8 ||
         w.time.length !== m.time.length ||
         m.time.some((date: string, i: number) => date !== w.time[i])
       )
