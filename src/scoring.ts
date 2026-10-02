@@ -2,63 +2,74 @@ import type { DayWeather } from './openMeteo.ts';
 
 export const ACTIVITIES = ['SKIING', 'SURFING', 'OUTDOOR_SIGHTSEEING', 'INDOOR_SIGHTSEEING'] as const;
 
-// [field it reads, does it apply?, points added to the base score, reason shown to the user].
-// A missing (null) value never triggers a rule: no data is not bad weather.
-type Rule = [keyof Omit<DayWeather, 'date'>, (value: number) => boolean, number, string];
-// `unavailable` = impossible here this week (no sea, no snow), which is different from bad weather.
-type Profile = { base: number; rules: Rule[]; unavailable?: (week: DayWeather[]) => string | false };
-
-const OUTDOOR: Rule[] = [
-  ['precipitation', (mm) => mm >= 5, -50, 'Heavy rain'],
-  ['precipitation', (mm) => mm >= 1 && mm < 5, -25, 'Showers'],
-  ['tempMax', (c) => c < 5, -30, 'Cold'],
-  ['tempMax', (c) => c > 32, -30, 'Very hot'],
-  ['windMax', (kmh) => kmh > 40, -25, 'Windy'],
-  ['sunshine', (s) => s < 2 * 3600, -15, 'Overcast'],
-];
-
-// Thresholds are first-pass judgement calls (docs/QUESTIONS.md) - tune them here, nowhere else.
-const PROFILES: Record<(typeof ACTIVITIES)[number], Profile> = {
-  SKIING: {
-    base: 100,
-    unavailable: (week) => !week.some((d) => (d.snowDepth ?? 0) >= 0.1) && 'No snow cover forecast',
-    rules: [
-      ['snowDepth', (m) => m < 0.3, -40, 'Thin snow cover'],
-      ['tempMax', (c) => c > 5, -30, 'Thaw softens the snow'],
-      ['rain', (mm) => mm > 1, -30, 'Rain on snow'],
-      ['windMax', (kmh) => kmh > 50, -40, 'Strong wind, lifts may close'],
-      ['snowfall', (cm) => cm >= 5, 10, 'Fresh snow'],
-    ],
-  },
-  SURFING: {
-    base: 100,
-    unavailable: (week) => week.every((d) => d.waveHeight === null) && 'No sea at this location',
-    rules: [
-      ['waveHeight', (m) => m < 0.5, -70, 'Flat sea'],
-      ['waveHeight', (m) => m >= 0.5 && m < 1, -30, 'Small waves'],
-      ['waveHeight', (m) => m > 3.5, -40, 'Big, powerful waves'],
-      ['wavePeriod', (s) => s < 7, -25, 'Short-period wind swell'],
-      ['windMax', (kmh) => kmh > 35, -30, 'Strong wind'],
-    ],
-  },
-  OUTDOOR_SIGHTSEEING: { base: 100, rules: OUTDOOR },
-  // Weather-proof, and more appealing the worse it is outside: outdoor rules mirrored at 60%.
-  INDOOR_SIGHTSEEING: { base: 60, rules: OUTDOOR.map(([field, when, pts, why]): Rule => [field, when, -pts * 0.6, `${why} outdoors`]) },
-};
-
+type Effect = [points: number, reason: string];
 const clamp = (n: number) => Math.round(Math.min(100, Math.max(0, n)));
+const scored = (date: string, base: number, effects: Effect[]) => ({
+  date,
+  score: clamp(base + effects.reduce((sum, [points]) => sum + points, 0)),
+  reasons: effects.map(([, reason]) => reason),
+});
 
-// Day score = base + matching rules; weekly score = mean of days. Best week first, unavailable last.
+function outdoorEffects(d: DayWeather): Effect[] {
+  const effects: Effect[] = [];
+  if (d.precipitation !== null && d.precipitation >= 5) effects.push([-50, 'Heavy rain']);
+  else if (d.precipitation !== null && d.precipitation >= 1) effects.push([-25, 'Showers']);
+  if (d.tempMax !== null && d.tempMax < 5) effects.push([-30, 'Cold']);
+  if (d.tempMax !== null && d.tempMax > 32) effects.push([-30, 'Very hot']);
+  if (d.windMax !== null && d.windMax > 40) effects.push([-25, 'Windy']);
+  if (d.sunshine !== null && d.sunshine < 2 * 3600) effects.push([-15, 'Overcast']);
+  return effects;
+}
+
+function scoreOutdoor(d: DayWeather) {
+  return scored(d.date, 100, outdoorEffects(d));
+}
+
+function scoreIndoor(d: DayWeather) {
+  const effects = outdoorEffects(d).map(([points, reason]): Effect => [-points * 0.6, `${reason} outdoors`]);
+  return scored(d.date, 60, effects);
+}
+
+function scoreSkiing(d: DayWeather) {
+  const effects: Effect[] = [];
+  if (d.snowDepth !== null && d.snowDepth < 0.3) effects.push([-40, 'Thin snow cover']);
+  if (d.tempMax !== null && d.tempMax > 5) effects.push([-30, 'Thaw softens the snow']);
+  if (d.rain !== null && d.rain > 1) effects.push([-30, 'Rain on snow']);
+  if (d.windMax !== null && d.windMax > 50) effects.push([-40, 'Strong wind, lifts may close']);
+  if (d.snowfall !== null && d.snowfall >= 5) effects.push([10, 'Fresh snow']);
+  return scored(d.date, 100, effects);
+}
+
+function scoreSurfing(d: DayWeather) {
+  const effects: Effect[] = [];
+  if (d.waveHeight !== null && d.waveHeight < 0.5) effects.push([-70, 'Flat sea']);
+  else if (d.waveHeight !== null && d.waveHeight < 1) effects.push([-30, 'Small waves']);
+  else if (d.waveHeight !== null && d.waveHeight > 3.5) effects.push([-40, 'Big, powerful waves']);
+  if (d.wavePeriod !== null && d.wavePeriod < 7) effects.push([-25, 'Short-period wind swell']);
+  if (d.windMax !== null && d.windMax > 35) effects.push([-30, 'Strong wind']);
+  return scored(d.date, 100, effects);
+}
+
+// The four functions above own their activity rules. This function only builds and sorts the weekly response.
 export function rankActivities(week: DayWeather[]) {
-  return ACTIVITIES.map((activity) => {
-    const { base, rules, unavailable } = PROFILES[activity];
-    const reason = unavailable?.(week);
-    if (reason) return { activity, available: false, reason, weeklyScore: null, days: [] };
+  const profiles = [
+    { activity: 'SKIING', scoreDay: scoreSkiing, unavailable: !week.some((d) => (d.snowDepth ?? 0) >= 0.1) && 'No snow cover forecast' },
+    { activity: 'SURFING', scoreDay: scoreSurfing, unavailable: week.every((d) => d.waveHeight === null) && 'No sea at this location' },
+    { activity: 'OUTDOOR_SIGHTSEEING', scoreDay: scoreOutdoor, unavailable: false },
+    { activity: 'INDOOR_SIGHTSEEING', scoreDay: scoreIndoor, unavailable: false },
+  ] as const;
 
-    const days = week.map((d) => {
-      const hits = rules.filter(([field, when]) => d[field] !== null && when(d[field]));
-      return { date: d.date, score: clamp(hits.reduce((sum, [, , pts]) => sum + pts, base)), reasons: hits.map(([, , , why]) => why) };
-    });
-    return { activity, available: true, reason: null, weeklyScore: clamp(days.reduce((sum, d) => sum + d.score, 0) / days.length), days };
-  }).sort((a, b) => (b.weeklyScore ?? -1) - (a.weeklyScore ?? -1));
+  return profiles
+    .map(({ activity, scoreDay, unavailable }) => {
+      if (unavailable) return { activity, available: false, reason: unavailable, weeklyScore: null, days: [] };
+      const days = week.map(scoreDay);
+      return {
+        activity,
+        available: true,
+        reason: null,
+        weeklyScore: clamp(days.reduce((sum, day) => sum + day.score, 0) / days.length),
+        days,
+      };
+    })
+    .sort((a, b) => (b.weeklyScore ?? -1) - (a.weeklyScore ?? -1));
 }

@@ -8,6 +8,10 @@ The first review found that an array of strings passed the old length check and 
 
 A two-day-old cached forecast returned only six days during an outage. Drop stale fallback: an expired forecast is refreshed, and a failed refresh returns `UPSTREAM_UNAVAILABLE`. Also check for exactly seven local dates before ranking. This removes the `stale` field and keeps one clear response contract.
 
+## 02.10.2026 review: one scoring function per activity
+
+Replace the generic rule table with four named functions. The scores and thresholds stay the same in this change; the existing tests check that. Each activity's conditions are now readable in one place, which will make the next missing-data fix easier to review.
+
 ## Stack
 
 Node 24 with native TypeScript (no build), GraphQL Yoga, `node:sqlite` (no native deps, one-command setup), `node:test` + fast-check.
