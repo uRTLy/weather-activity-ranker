@@ -9,6 +9,7 @@ const scored = (date: string, base: number, effects: Effect[]) => ({
   score: clamp(base + effects.reduce((sum, [points]) => sum + points, 0)),
   reasons: effects.map(([, reason]) => reason),
 });
+const unknown = (date: string, reason: string) => ({ date, score: null, reasons: [reason] });
 
 function outdoorEffects(d: DayWeather): Effect[] {
   const effects: Effect[] = [];
@@ -22,15 +23,19 @@ function outdoorEffects(d: DayWeather): Effect[] {
 }
 
 function scoreOutdoor(d: DayWeather) {
+  if ([d.precipitation, d.tempMax, d.windMax, d.sunshine].some((value) => value == null)) return unknown(d.date, 'Missing weather data');
   return scored(d.date, 100, outdoorEffects(d));
 }
 
 function scoreIndoor(d: DayWeather) {
+  if ([d.precipitation, d.tempMax, d.windMax, d.sunshine].some((value) => value == null)) return unknown(d.date, 'Missing weather data');
   const effects = outdoorEffects(d).map(([points, reason]): Effect => [-points * 0.6, `${reason} outdoors`]);
   return scored(d.date, 60, effects);
 }
 
 function scoreSkiing(d: DayWeather) {
+  if ([d.snowDepth, d.tempMax, d.rain, d.windMax, d.snowfall].some((value) => value == null))
+    return unknown(d.date, 'Missing ski weather data');
   const effects: Effect[] = [];
   if (d.snowDepth !== null && d.snowDepth < 0.3) effects.push([-40, 'Thin snow cover']);
   if (d.tempMax !== null && d.tempMax > 5) effects.push([-30, 'Thaw softens the snow']);
@@ -41,6 +46,7 @@ function scoreSkiing(d: DayWeather) {
 }
 
 function scoreSurfing(d: DayWeather) {
+  if ([d.waveHeight, d.wavePeriod, d.windMax].some((value) => value == null)) return unknown(d.date, 'Missing marine data');
   const effects: Effect[] = [];
   if (d.waveHeight !== null && d.waveHeight < 0.5) effects.push([-70, 'Flat sea']);
   else if (d.waveHeight !== null && d.waveHeight < 1) effects.push([-30, 'Small waves']);
@@ -53,21 +59,26 @@ function scoreSurfing(d: DayWeather) {
 // The four functions above own their activity rules. This function only builds and sorts the weekly response.
 export function rankActivities(week: DayWeather[]) {
   const profiles = [
-    { activity: 'SKIING', scoreDay: scoreSkiing, unavailable: !week.some((d) => (d.snowDepth ?? 0) >= 0.1) && 'No snow cover forecast' },
-    { activity: 'SURFING', scoreDay: scoreSurfing, unavailable: week.every((d) => d.waveHeight === null) && 'No sea at this location' },
+    {
+      activity: 'SKIING',
+      scoreDay: scoreSkiing,
+      unavailable: week.every((d) => d.snowDepth != null && d.snowDepth < 0.1) && 'No snow cover forecast',
+    },
+    { activity: 'SURFING', scoreDay: scoreSurfing, unavailable: false },
     { activity: 'OUTDOOR_SIGHTSEEING', scoreDay: scoreOutdoor, unavailable: false },
     { activity: 'INDOOR_SIGHTSEEING', scoreDay: scoreIndoor, unavailable: false },
   ] as const;
 
   return profiles
     .map(({ activity, scoreDay, unavailable }) => {
-      if (unavailable) return { activity, available: false, reason: unavailable, weeklyScore: null, days: [] };
+      if (unavailable) return { activity, status: 'UNAVAILABLE' as const, reason: unavailable, weeklyScore: null, days: [] };
       const days = week.map(scoreDay);
+      const complete = days.every((day) => day.score !== null);
       return {
         activity,
-        available: true,
-        reason: null,
-        weeklyScore: clamp(days.reduce((sum, day) => sum + day.score, 0) / days.length),
+        status: complete ? ('SCORED' as const) : ('UNKNOWN' as const),
+        reason: complete ? null : 'Missing data for some days',
+        weeklyScore: complete ? clamp(days.reduce((sum, day) => sum + day.score!, 0) / days.length) : null,
         days,
       };
     })

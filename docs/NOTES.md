@@ -48,3 +48,10 @@ In the order it happened. Commits were grouped by area at the end, so their time
 
 Ask the PM the questions first. Then: `language` hint for geocoding, candidates for ambiguous names,
 best-day vs mean as an option, metrics on cache hit rate and upstream latency.
+
+## 02.10.2026 — missing-data scoring
+
+Review reproduced a perfect surfing week with a missing marine day, and perfect sightseeing scores with missing temperature.
+Changed the API from `available` to `SCORED`, `UNKNOWN`, or `UNAVAILABLE`. Missing required inputs leave the day and weekly
+scores unknown; complete days keep their scores. Kept the four scoring functions. Deferred resort lookup and the separate
+provider/date-validation fixes.

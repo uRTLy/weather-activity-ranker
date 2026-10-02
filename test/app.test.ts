@@ -109,3 +109,46 @@ test('prefers an exact name match over a bigger fuzzy one', async () => {
   assert.equal((await query('Bali')).data.activityRanking.location.country, 'India');
   assert.equal((await query('Springfield')).data.activityRanking.location.name, 'Dayton'); // no exact match: API order
 });
+
+test('a missing marine day has no score and cannot produce a perfect weekly score', async () => {
+  const { upstream, query } = setup();
+  const marine = upstream.marine;
+  upstream.marine = (dates) => {
+    const data = marine(dates);
+    data.wave_height_max[1] = null;
+    data.wave_period_max[1] = null;
+    return data;
+  };
+
+  const { data, errors } = await query('Lisbon');
+  assert.equal(errors, undefined);
+  const surfing = data.activityRanking.activities.find((a: any) => a.activity === 'SURFING');
+  assert.equal(surfing.status, 'UNKNOWN');
+  assert.equal(surfing.days.length, 7);
+  assert.equal(surfing.days[1].score, null);
+  assert.ok(surfing.days[1].reasons.length > 0);
+  assert.equal(surfing.weeklyScore, null);
+  assert.equal(surfing.days[0].score, 100);
+  const outdoor = data.activityRanking.activities.find((a: any) => a.activity === 'OUTDOOR_SIGHTSEEING');
+  assert.equal(outdoor.status, 'SCORED');
+  assert.equal(outdoor.weeklyScore, 100);
+});
+
+test('missing weather inputs cannot produce a perfect sightseeing score', async () => {
+  const { upstream, query } = setup();
+  const forecast = upstream.forecast;
+  upstream.forecast = (dates) => ({ ...forecast(dates), temperature_2m_max: dates.map(() => null) });
+
+  const { data, errors } = await query('Lisbon');
+  assert.equal(errors, undefined);
+  for (const activity of ['OUTDOOR_SIGHTSEEING', 'INDOOR_SIGHTSEEING']) {
+    const result = data.activityRanking.activities.find((a: any) => a.activity === activity);
+    assert.equal(result.status, 'UNKNOWN');
+    assert.equal(result.days.length, 7);
+    assert.equal(result.weeklyScore, null);
+    for (const day of result.days) {
+      assert.equal(day.score, null);
+      assert.ok(day.reasons.length > 0);
+    }
+  }
+});

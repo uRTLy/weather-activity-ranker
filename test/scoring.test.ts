@@ -34,13 +34,13 @@ test('bad weather lowers outdoor and raises indoor, with reasons', () => {
   assert.ok(indoor.weeklyScore! > outdoor.weeklyScore!);
 });
 
-test('no sea and no snow make surfing and skiing unavailable, ranked last', () => {
+test('missing marine data is unknown while a snowless week is unavailable, ranked last', () => {
   const ranking = rankActivities([day()]);
   assert.deepEqual(
-    ranking.slice(2).map((a) => [a.activity, a.available, a.reason]),
+    ranking.slice(2).map((a) => [a.activity, a.status, a.reason]),
     [
-      ['SKIING', false, 'No snow cover forecast'],
-      ['SURFING', false, 'No sea at this location'],
+      ['SKIING', 'UNAVAILABLE', 'No snow cover forecast'],
+      ['SURFING', 'UNKNOWN', 'Missing data for some days'],
     ],
   );
 });
@@ -68,7 +68,39 @@ test('deep cold snow with fresh powder beats a rainy thaw for skiing', () => {
   );
 });
 
-test('missing values trigger no rules', () => {
+test('missing values cannot produce a score', () => {
   const blank = day({ tempMax: null, precipitation: null, windMax: null, sunshine: null });
-  assert.deepEqual(find([blank], 'OUTDOOR_SIGHTSEEING').days[0].reasons, []);
+  const result = find([blank], 'OUTDOOR_SIGHTSEEING');
+  assert.equal(result.status, 'UNKNOWN');
+  assert.equal(result.weeklyScore, null);
+  assert.equal(result.days[0].score, null);
+  assert.deepEqual(result.days[0].reasons, ['Missing weather data']);
+});
+
+const required: [string, (keyof DayWeather)[]][] = [
+  ['SKIING', ['snowDepth', 'tempMax', 'rain', 'windMax', 'snowfall']],
+  ['SURFING', ['waveHeight', 'wavePeriod', 'windMax']],
+  ['OUTDOOR_SIGHTSEEING', ['precipitation', 'tempMax', 'windMax', 'sunshine']],
+  ['INDOOR_SIGHTSEEING', ['precipitation', 'tempMax', 'windMax', 'sunshine']],
+];
+
+for (const [activity, fields] of required) {
+  for (const field of fields) {
+    test(`${activity} cannot be scored without ${field}`, () => {
+      const complete = day({ snowDepth: 1, waveHeight: 1.5, wavePeriod: 10 });
+      const result = find([complete, { ...complete, date: '2026-01-11', [field]: null }], activity);
+      assert.equal(result.status, 'UNKNOWN');
+      assert.equal(result.weeklyScore, null);
+      assert.notEqual(result.days[0].score, null);
+      assert.equal(result.days[1].score, null);
+      assert.ok(result.days[1].reasons.length > 0);
+    });
+  }
+}
+
+test('unknown snow depth does not prove a snowless week', () => {
+  const result = find([day(), day({ date: '2026-01-11', snowDepth: null })], 'SKIING');
+  assert.equal(result.status, 'UNKNOWN');
+  assert.equal(result.weeklyScore, null);
+  assert.equal(result.days.length, 2);
 });

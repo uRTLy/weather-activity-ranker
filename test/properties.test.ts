@@ -22,7 +22,7 @@ const dayArb = fc.record({
 }) as fc.Arbitrary<DayWeather>;
 const isScore = (n: unknown) => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 100;
 
-test('scores are integers 0-100, sorted, one entry per activity, availability matches the data', () => {
+test('scores are integers 0-100 or unknown, sorted, with status matching score completeness', () => {
   fc.assert(
     fc.property(fc.array(dayArb, { minLength: 1, maxLength: 16 }), (week) => {
       const ranking = rankActivities(week);
@@ -34,22 +34,30 @@ test('scores are integers 0-100, sorted, one entry per activity, availability ma
       );
 
       for (const a of ranking) {
-        if (!a.available) {
+        if (a.status === 'UNAVAILABLE') {
           assert.ok(a.reason && a.weeklyScore === null && a.days.length === 0);
           continue;
         }
-        assert.ok(isScore(a.weeklyScore));
         assert.equal(a.days.length, week.length);
-        for (const d of a.days) assert.ok(isScore(d.score));
+        for (const d of a.days) assert.ok(d.score === null ? d.reasons.length > 0 : isScore(d.score));
+        if (a.status === 'SCORED') {
+          assert.ok(isScore(a.weeklyScore));
+          assert.ok(a.days.every((d) => isScore(d.score)));
+          assert.equal(a.reason, null);
+        } else {
+          assert.equal(a.status, 'UNKNOWN');
+          assert.equal(a.weeklyScore, null);
+          assert.ok(a.reason && a.days.some((d) => d.score === null));
+        }
       }
-      const available = (activity: string) => ranking.find((a) => a.activity === activity)!.available;
+      const status = (activity: string) => ranking.find((a) => a.activity === activity)!.status;
       assert.equal(
-        available('SURFING'),
-        week.some((d) => d.waveHeight !== null),
+        status('SURFING'),
+        week.every((d) => d.waveHeight !== null && d.wavePeriod !== null && d.windMax !== null) ? 'SCORED' : 'UNKNOWN',
       );
       assert.equal(
-        available('SKIING'),
-        week.some((d) => (d.snowDepth ?? 0) >= 0.1),
+        status('SKIING') === 'UNAVAILABLE',
+        week.every((d) => d.snowDepth !== null && d.snowDepth < 0.1),
       );
     }),
     { numRuns: 3000 },
@@ -59,10 +67,17 @@ test('scores are integers 0-100, sorted, one entry per activity, availability ma
 test('more rain never makes outdoor better, nor indoor worse', () => {
   fc.assert(
     fc.property(dayArb, fc.double({ min: 0, max: 100, noNaN: true }), (day, extra) => {
-      const wetter = { ...day, precipitation: (day.precipitation ?? 0) + extra };
+      const dry = {
+        ...day,
+        tempMax: day.tempMax ?? 20,
+        windMax: day.windMax ?? 10,
+        sunshine: day.sunshine ?? 20_000,
+        precipitation: day.precipitation ?? 0,
+      };
+      const wetter = { ...dry, precipitation: dry.precipitation + extra };
       const score = (d: DayWeather, activity: string) => rankActivities([d]).find((a) => a.activity === activity)!.weeklyScore!;
-      assert.ok(score(wetter, 'OUTDOOR_SIGHTSEEING') <= score({ ...day, precipitation: day.precipitation ?? 0 }, 'OUTDOOR_SIGHTSEEING'));
-      assert.ok(score(wetter, 'INDOOR_SIGHTSEEING') >= score({ ...day, precipitation: day.precipitation ?? 0 }, 'INDOOR_SIGHTSEEING'));
+      assert.ok(score(wetter, 'OUTDOOR_SIGHTSEEING') <= score(dry, 'OUTDOOR_SIGHTSEEING'));
+      assert.ok(score(wetter, 'INDOOR_SIGHTSEEING') >= score(dry, 'INDOOR_SIGHTSEEING'));
     }),
     { numRuns: 2000 },
   );
@@ -126,7 +141,7 @@ test('odd but valid Open-Meteo payloads (nulls, extremes, missing country) alway
 
         const { data, errors } = await query('Lisbon');
         assert.equal(errors, undefined, JSON.stringify(errors));
-        for (const a of data.activityRanking.activities) assert.equal(a.days.length, a.available ? 7 : 0);
+        for (const a of data.activityRanking.activities) assert.equal(a.days.length, a.status === 'UNAVAILABLE' ? 0 : 7);
       },
     ),
     { numRuns: 500 },

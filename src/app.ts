@@ -19,6 +19,12 @@ const typeDefs = /* GraphQL */ `
     INDOOR_SIGHTSEEING
   }
 
+  enum AssessmentStatus {
+    SCORED
+    UNKNOWN
+    UNAVAILABLE
+  }
+
   type Query {
     "Next 7 local days. Ambiguous names pick the most populous match; countryCode (e.g. PL) narrows."
     activityRanking(place: String!, countryCode: String): ActivityRanking!
@@ -39,10 +45,10 @@ const typeDefs = /* GraphQL */ `
     timezone: String!
   }
 
-  "available = false means impossible here (no sea, no snow), not bad weather; reason says which."
+  "SCORED has all required inputs; UNKNOWN has missing data; UNAVAILABLE has a known unmet condition."
   type ActivityForecast {
     activity: Activity!
-    available: Boolean!
+    status: AssessmentStatus!
     reason: String
     weeklyScore: Int
     days: [DayScore!]!
@@ -50,7 +56,7 @@ const typeDefs = /* GraphQL */ `
 
   type DayScore {
     date: String!
-    score: Int!
+    score: Int
     reasons: [String!]!
   }
 `;

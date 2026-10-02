@@ -22,7 +22,7 @@ npm start            # http://localhost:4000/graphql (GraphiQL in dev)
     fetchedAt
     activities {
       activity
-      available
+      status
       reason
       weeklyScore
       days {
@@ -51,8 +51,10 @@ Env: `PORT` (4000), `DB_PATH` (forecast.sqlite), `RATE_LIMIT` (60 req/min/IP), `
 
 - `place` -> Open-Meteo geocoding. Exact name wins, then population. `countryCode` narrows.
 - Forecast + marine data, one row per local day, cached 3 h. Expired data is refetched; provider failure returns `UPSTREAM_UNAVAILABLE`.
-- Each day scored 0-100 by simple rules, with reasons. Activities sorted by weekly mean.
-- No sea / no snow -> `available: false` + `reason`. Not the same as a bad score.
+- Each day scored 0-100 by simple rules, with reasons. Missing required inputs -> `score: null`.
+- `SCORED`: all seven days assessed, ranked by their mean. `UNKNOWN`: missing inputs, `weeklyScore: null`.
+- `UNAVAILABLE`: a known unmet condition (snow depth below 0.1 m for every day). No scores; reason supplied.
+- Unknown and unavailable weeks rank after scored weeks. Missing wave data does not prove there is no sea.
 - Errors: `BAD_USER_INPUT`, `PLACE_NOT_FOUND`, `UPSTREAM_UNAVAILABLE`. Anything else is masked.
 
 ## Code

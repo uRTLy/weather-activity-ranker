@@ -4,6 +4,9 @@
 
 The first review found that an array of strings passed the old length check and could be cached as weather. Keep the small hand-written parser, but check dates, numeric values, and marine/weather date alignment before writing to SQLite. Malformed provider data becomes `UPSTREAM_UNAVAILABLE`.
 
+Remaining gaps: date checks only validate string shape, marine arrays can be shorter than weather arrays, and invalid geocoding
+candidates or timezones can become internal errors. Fix these separately from scoring.
+
 ## 02.10.2026 review: require a full week
 
 A two-day-old cached forecast returned only six days during an outage. Drop stale fallback: an expired forecast is refreshed, and a failed refresh returns `UPSTREAM_UNAVAILABLE`. Also check for exactly seven local dates before ranking. This removes the `stale` field and keeps one clear response contract.
@@ -37,9 +40,13 @@ to a different elevation and coastal towns inland.
 
 ## Scoring
 
-- Rules are data: `[field, test, points, reason]`. Tune in one file.
-- `null` never triggers a rule. Missing data is not bad weather.
-- Weekly score = mean of days.
+- Four scoring functions own the activity rules in one file.
+- Required inputs: sightseeing uses temperature, precipitation, wind and sunshine; surfing uses wave height, wave period and wind;
+  skiing uses snow depth, temperature, rain, wind and snowfall.
+- Missing required input -> day score `null`, with a reason. Complete days retain their scores.
+- `SCORED`: all seven days assessed; weekly score = their mean. Otherwise `UNKNOWN`, with no weekly score.
+- `UNAVAILABLE`: known snow depth below 0.1 m for every day; no day scores. Missing snow data cannot establish this.
+- Missing wave data means unknown, not proof of no sea. Unknown and unavailable weeks sort after scored weeks.
 
 ## Errors
 
@@ -51,7 +58,7 @@ its own `UpstreamError`, `app.ts` maps it; the client does not know about GraphQ
 - Input allow-list: `place` letters (any script), digits, `.,'’()-`, max 100. `countryCode` two letters.
 - graphql-armor: max 3 aliases (each can mean upstream calls), plus depth/cost/token limits.
 - SQL via prepared statements only.
-- Open-Meteo responses checked before caching, so a broken one is not served for 3 h.
+- Numeric columns and basic response shape checked before caching; the remaining date and geocoding gaps are listed above.
 - Per-IP rate limit, request timeout, 10 s upstream timeout, graceful shutdown. GraphiQL off in production.
 
 ## Known, left out on purpose

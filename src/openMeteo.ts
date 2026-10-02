@@ -12,7 +12,7 @@ const WEATHER = {
 } as const;
 const MARINE = { waveHeight: 'wave_height_max', wavePeriod: 'wave_period_max' } as const;
 
-// Any value may be null. Marine values are all null inland - that is how we know surfing is impossible.
+// Any value may be null. Missing marine data does not establish whether surfing is possible.
 export type DayWeather = { date: string } & Record<keyof typeof WEATHER | keyof typeof MARINE, number | null>;
 
 // Provider faults become a retryable GraphQL error; keep the detail for diagnostics.

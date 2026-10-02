@@ -3,13 +3,14 @@
 Question -> what I assumed.
 
 1. **What does "rank" mean?** Days per activity, activities for the week, or both?
-   -> Both. Every day gets a 0-100 score per activity; activities are sorted by weekly mean.
+   -> Both. Each assessed day gets a 0-100 score; missing required inputs leave it unknown. Complete weeks are sorted by mean.
 2. **Weekly = mean or best day?** A skier may only need one good day.
-   -> Mean. Best day is a one-line change in `rankActivities`.
+   -> Mean of all seven days. If any day is unknown, the weekly score is also unknown.
 3. **Ambiguous city** ("Paris", "Springfield")?
    -> Exact name match first, then the most populous. `countryCode` narrows. Alternative: return candidates and let the client pick.
-4. **Activity impossible here** (surfing in Warsaw)?
-   -> `available: false` with a reason, ranked last. Not a 0 - "bad weather" and "no sea" are different answers.
+4. **Activity unavailable or data missing** (surfing in Warsaw)?
+   -> `UNAVAILABLE` only for a known unmet condition; `UNKNOWN` for missing inputs. Both rank after scored weeks.
+   Null marine data is not proof of no sea. Skiing is unavailable when every day has known snow depth below 0.1 m.
 5. **Is indoor sightseeing weather dependent?**
    -> Weather-proof, and more attractive when it is bad outside. Base 60, outdoor penalties mirrored at 60%.
 6. **Whose "next 7 days"?**
