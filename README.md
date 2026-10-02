@@ -1,0 +1,75 @@
+# activity-forecast
+
+GraphQL service. Give it a city, get the next 7 days ranked for skiing, surfing, outdoor and indoor sightseeing.
+Weather from [Open-Meteo](https://open-meteo.com), cached in SQLite.
+
+## Run
+
+Node 24+ (runs TypeScript natively, no build step).
+
+```sh
+npm install
+npm start            # http://localhost:4000/graphql (GraphiQL in dev)
+```
+
+```graphql
+{
+  activityRanking(place: "Lisbon") {
+    location {
+      name
+      country
+    }
+    fetchedAt
+    stale
+    activities {
+      activity
+      available
+      reason
+      weeklyScore
+      days {
+        date
+        score
+        reasons
+      }
+    }
+  }
+}
+```
+
+```sh
+curl -s localhost:4000/graphql -H 'content-type: application/json' \
+  -d '{"query":"{ activityRanking(place: \"Paris\", countryCode: \"US\") { activities { activity weeklyScore } } }"}'
+```
+
+```sh
+npm test             # offline, ~7k generated cases
+npm run check        # format + types + tests
+```
+
+Env: `PORT` (4000), `DB_PATH` (forecast.sqlite), `RATE_LIMIT` (60 req/min/IP), `NODE_ENV=production` turns GraphiQL off.
+
+## What it does
+
+- `place` -> Open-Meteo geocoding. Exact name wins, then population. `countryCode` narrows.
+- Forecast + marine data, one row per local day, cached 3 h. Open-Meteo down -> last known forecast, `stale: true`.
+- Each day scored 0-100 by simple rules, with reasons. Activities sorted by weekly mean.
+- No sea / no snow -> `available: false` + `reason`. Not the same as a bad score.
+- Errors: `BAD_USER_INPUT`, `PLACE_NOT_FOUND`, `UPSTREAM_UNAVAILABLE`. Anything else is masked.
+
+## Code
+
+```
+src/openMeteo.ts   API client, response checks
+src/cache.ts       SQLite cache: TTL, one upstream call per key, stale fallback
+src/scoring.ts     rules, pure
+src/app.ts         schema, resolver, input checks
+src/server.ts      HTTP, rate limit, shutdown
+test/              unit, integration (fake Open-Meteo), property tests
+```
+
+## Assumptions
+
+Short version: rank = per-day score per activity, sorted by weekly mean; days are local to the place; thresholds are my guesses.
+Full list with the questions I'd ask a PM: [docs/QUESTIONS.md](docs/QUESTIONS.md).
+
+Decisions and what I left out on purpose: [docs/DECISIONS.md](docs/DECISIONS.md). How it got built: [docs/NOTES.md](docs/NOTES.md).

@@ -1,0 +1,54 @@
+# Decisions
+
+## Stack
+
+Node 24 with native TypeScript (no build), GraphQL Yoga, `node:sqlite` (no native deps, one-command setup), `node:test` + fast-check.
+Prettier for formatting. No ESLint: strict `tsc` covers most of it at this size.
+
+## Storage
+
+One key-value table: `key, fetched_at, data (JSON)`. Every read is "whole thing by key", so columns buy nothing yet.
+We store parsed daily rows, not raw API responses, and score on read. Changing rules needs no refetch or migration.
+
+## Cache key
+
+Forecasts are keyed by coordinates rounded to 0.01° (~1 km), not by name. "Kraków" and "Krakow" share an entry.
+0.01° is finer than any model grid, so no accuracy loss. Considered 0.1°: shares more, but can move mountain towns
+to a different elevation and coastal towns inland.
+
+## Freshness
+
+- Forecast: 3 h (models update every few hours). Geocoding: 30 days.
+- Expired -> refetch. Refetch fails -> serve the old value, `stale: true`, until it has no future days left.
+- Concurrent requests for one key share one upstream call.
+- Dropped stale-while-revalidate (serve old, refresh in background): more code, saves ~0.3 s once per 3 h per place.
+
+## Scoring
+
+- Rules are data: `[field, test, points, reason]`. Tune in one file.
+- `null` never triggers a rule. Missing data is not bad weather.
+- Weekly score = mean of days.
+
+## Errors
+
+Client sees `BAD_USER_INPUT`, `PLACE_NOT_FOUND` or `UPSTREAM_UNAVAILABLE` (retry later). The Open-Meteo client throws
+its own `UpstreamError`, `app.ts` maps it; the client does not know about GraphQL. Everything else is masked.
+
+## Security
+
+- Input allow-list: `place` letters (any script), digits, `.,'’()-`, max 100. `countryCode` two letters.
+- graphql-armor: max 3 aliases (each can mean upstream calls), plus depth/cost/token limits.
+- SQL via prepared statements only.
+- Open-Meteo responses checked before caching, so a broken one is not served for 3 h.
+- Per-IP rate limit, request timeout, 10 s upstream timeout, graceful shutdown. GraphiQL off in production.
+
+## Known, left out on purpose
+
+- **No cache eviction.** Rows are small and keys bounded by real places. When needed: a periodic `DELETE WHERE fetched_at < ?`.
+- **Rate limit sees the proxy, not the client, behind a load balancer.** The real limit belongs at the gateway.
+  `X-Forwarded-For` is only trustworthy when our own proxy sets it, so not read here. Limit is also per instance.
+- **No schema validation lib (zod).** Hand checks on the few fields we use. Worth it with more endpoints.
+- **CORS open, introspection on.** Public API, nothing secret in the schema. Revisit once we know the clients.
+- **Not built:** auth, metrics/tracing, Docker/deploy, CI, prewarming popular cities, hourly "best window",
+  finding the nearest coast for towns slightly inland, `language` hint for non-Latin names.
+- **Data quirks seen live:** "McMurdo" resolves to Canada; some places have no country (Nuuk, Pago Pago) - `country` is nullable.
