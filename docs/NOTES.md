@@ -83,3 +83,10 @@ test and require at least eight days before caching. Live GraphQL checks for Lis
 Added a GraphQL test using a temporary SQLite file. Close the database and rebuild the app, then disable the provider: the
 fresh stored ranking is identical, with no upstream calls. After expiry, the restarted app attempts a refresh and returns the
 typed provider error. This verifies persistence and TTL through the public API rather than querying the cache table.
+
+## 02.10.2026 — submission scope and run check
+
+Kept skiing as a town-coordinate weather estimate; resort conditions and operating lifts require separate data. Added that
+assumption to the README and PM questions. Verified `npm ci` and all 68 tests from an isolated Git archive on Node 26.8.1.
+Started the production HTTP server there and queried Lisbon twice: both returned the same full cached answer. Use `npm ci`
+in the run instructions so reviewers install the checked lockfile.

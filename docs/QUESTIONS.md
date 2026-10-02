@@ -25,3 +25,6 @@ Question -> what I assumed.
     -> Public, anonymous, any origin.
 11. **Place names in other scripts** (Москва, 東京)?
     -> English / Latin names. Open-Meteo only finds those with a matching `language` hint; not exposed yet.
+12. **Where is skiing assessed?** Town or nearby resort?
+    -> Weather and snow at the town's coordinates. No resort lookup or claim about operating lifts; deferred to avoid adding
+    an unverified resort catalogue to this exercise.

@@ -8,7 +8,7 @@ Weather from [Open-Meteo](https://open-meteo.com), cached in SQLite.
 Node 24+ (runs TypeScript natively, no build step).
 
 ```sh
-npm install
+npm ci
 npm start            # http://localhost:4000/graphql (GraphiQL in dev)
 ```
 
@@ -71,6 +71,8 @@ test/              unit, integration (fake Open-Meteo), property tests
 ## Assumptions
 
 Short version: rank = per-day score per activity, sorted by weekly mean; days are local to the place; thresholds are my guesses.
+Skiing uses snow and weather at the town's coordinates. It does not establish resort conditions or lift availability.
+Ski-area lookup is deferred to keep this submission focused.
 Full list with the questions I'd ask a PM: [docs/QUESTIONS.md](docs/QUESTIONS.md).
 
 Decisions and what I left out on purpose: [docs/DECISIONS.md](docs/DECISIONS.md). How it got built: [docs/NOTES.md](docs/NOTES.md).
