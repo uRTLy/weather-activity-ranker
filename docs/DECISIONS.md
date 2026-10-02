@@ -4,6 +4,10 @@
 
 The first review found that an array of strings passed the old length check and could be cached as weather. Keep the small hand-written parser, but check dates, numeric values, and marine/weather date alignment before writing to SQLite. Malformed provider data becomes `UPSTREAM_UNAVAILABLE`.
 
+## 02.10.2026 review: require a full week
+
+A two-day-old cached forecast returned only six days during an outage. Drop stale fallback: an expired forecast is refreshed, and a failed refresh returns `UPSTREAM_UNAVAILABLE`. Also check for exactly seven local dates before ranking. This removes the `stale` field and keeps one clear response contract.
+
 ## Stack
 
 Node 24 with native TypeScript (no build), GraphQL Yoga, `node:sqlite` (no native deps, one-command setup), `node:test` + fast-check.
@@ -23,7 +27,7 @@ to a different elevation and coastal towns inland.
 ## Freshness
 
 - Forecast: 3 h (models update every few hours). Geocoding: 30 days.
-- Expired -> refetch. Refetch fails -> serve the old value, `stale: true`, until it has no future days left.
+- Expired -> refetch. Refetch fails -> return `UPSTREAM_UNAVAILABLE`.
 - Concurrent requests for one key share one upstream call.
 - Dropped stale-while-revalidate (serve old, refresh in background): more code, saves ~0.3 s once per 3 h per place.
 

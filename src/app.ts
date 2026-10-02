@@ -24,11 +24,10 @@ const typeDefs = /* GraphQL */ `
     activityRanking(place: String!, countryCode: String): ActivityRanking!
   }
 
-  "Activities sorted best week first. stale = Open-Meteo was down, this is the last known forecast."
+  "Activities sorted best week first."
   type ActivityRanking {
     location: Location!
     fetchedAt: String!
-    stale: Boolean!
     activities: [ActivityForecast!]!
   }
 
@@ -86,11 +85,10 @@ export function createApp({ db, fetch = globalThis.fetch, now = Date.now }: Deps
 
     const today = localDate(location.timezone, now());
     const week = forecast.value.filter((d) => d.date >= today).slice(0, 7);
-    if (!week.length) unavailable(`forecast for ${lat},${lon} has no future days left`); // outage outlived the cached forecast
+    if (week.length !== 7) unavailable(`forecast for ${lat},${lon} does not cover seven days`);
     return {
       location,
       fetchedAt: new Date(forecast.fetchedAt).toISOString(),
-      stale: forecast.stale,
       activities: rankActivities(week),
     };
   }

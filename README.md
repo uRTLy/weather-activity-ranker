@@ -20,7 +20,6 @@ npm start            # http://localhost:4000/graphql (GraphiQL in dev)
       country
     }
     fetchedAt
-    stale
     activities {
       activity
       available
@@ -51,7 +50,7 @@ Env: `PORT` (4000), `DB_PATH` (forecast.sqlite), `RATE_LIMIT` (60 req/min/IP), `
 ## What it does
 
 - `place` -> Open-Meteo geocoding. Exact name wins, then population. `countryCode` narrows.
-- Forecast + marine data, one row per local day, cached 3 h. Open-Meteo down -> last known forecast, `stale: true`.
+- Forecast + marine data, one row per local day, cached 3 h. Expired data is refetched; provider failure returns `UPSTREAM_UNAVAILABLE`.
 - Each day scored 0-100 by simple rules, with reasons. Activities sorted by weekly mean.
 - No sea / no snow -> `available: false` + `reason`. Not the same as a bad score.
 - Errors: `BAD_USER_INPUT`, `PLACE_NOT_FOUND`, `UPSTREAM_UNAVAILABLE`. Anything else is masked.
@@ -60,7 +59,7 @@ Env: `PORT` (4000), `DB_PATH` (forecast.sqlite), `RATE_LIMIT` (60 req/min/IP), `
 
 ```
 src/openMeteo.ts   API client, response checks
-src/cache.ts       SQLite cache: TTL, one upstream call per key, stale fallback
+src/cache.ts       SQLite cache: TTL, one upstream call per key
 src/scoring.ts     rules, pure
 src/app.ts         schema, resolver, input checks
 src/server.ts      HTTP, rate limit, shutdown

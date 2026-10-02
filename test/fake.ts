@@ -54,7 +54,7 @@ export function setup() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         query: `query ($place: String!, $cc: String) { activityRanking(place: $place, countryCode: $cc) {
-          location { name country } fetchedAt stale activities { activity available reason weeklyScore days { date score reasons } } } }`,
+          location { name country } fetchedAt activities { activity available reason weeklyScore days { date score reasons } } } }`,
         variables: { place, cc: countryCode },
       }),
     });

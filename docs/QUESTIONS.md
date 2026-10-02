@@ -15,7 +15,7 @@ Question -> what I assumed.
 6. **Whose "next 7 days"?**
    -> Local days at the place, today included.
 7. **How fresh must data be?**
-   -> 3 h. If Open-Meteo is down we serve the last forecast with `stale: true`.
+   -> 3 h. If Open-Meteo is down after expiry, return a retryable error rather than a partial week.
 8. **Scoring thresholds?**
    -> My guesses (e.g. waves 1-3.5 m, rain >= 5 mm is heavy). Would want a surfer and a ski ops person to review. No skill levels.
 9. **Surfing on lakes?** Open-Meteo has marine data for big lakes (Chicago gets a surf score).

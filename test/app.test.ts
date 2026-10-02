@@ -7,7 +7,6 @@ test('ranks activities for 7 local days, best first', async () => {
   const { data } = await query('Lisbon');
   const ranking = data.activityRanking;
   assert.equal(ranking.location.name, 'Lisbon');
-  assert.equal(ranking.stale, false);
   assert.deepEqual(
     ranking.activities.map((a: any) => a.activity),
     ['SURFING', 'OUTDOOR_SIGHTSEEING', 'INDOOR_SIGHTSEEING', 'SKIING'],
@@ -30,20 +29,17 @@ test('an expired forecast is refetched', async () => {
   clock.now += 4 * HOUR;
 
   const { data } = await query('Lisbon');
-  assert.equal(data.activityRanking.stale, false);
   assert.equal(upstream.calls.forecast, 2);
 });
 
-test('falls back to the last forecast when Open-Meteo is down', async () => {
+test('does not return a partial week when Open-Meteo is down', async () => {
   const { upstream, clock, query } = setup();
   await query('Lisbon');
-  clock.now += 30 * HOUR;
+  clock.now += 48 * HOUR;
   upstream.failing = true;
 
-  const { data, errors } = await query('Lisbon');
-  assert.equal(errors, undefined);
-  assert.equal(data.activityRanking.stale, true);
-  assert.equal(data.activityRanking.activities[0].days[0].date, '2026-01-11'); // past days dropped
+  const { errors } = await query('Lisbon');
+  assert.equal(errors[0].extensions.code, 'UPSTREAM_UNAVAILABLE');
 });
 
 test('unknown places return a typed error', async () => {

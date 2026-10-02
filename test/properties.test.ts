@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import fc from 'fast-check';
 import type { DayWeather } from '../src/openMeteo.ts';
 import { ACTIVITIES, rankActivities } from '../src/scoring.ts';
-import { HOUR, isoDay, setup } from './fake.ts';
+import { HOUR, setup } from './fake.ts';
 
 // Open-Meteo sends null for missing values, so every generated number may be null too.
 const value = (min: number, max: number) => fc.option(fc.double({ min, max, noNaN: true }), { nil: null, freq: 5 });
@@ -159,16 +159,10 @@ test('cache keeps its contract over random timelines of clock jumps, outages and
           if (!fresh) fetchedAt.set(s.place, clock.now);
           for (const r of results) {
             assert.equal(r.errors, undefined, JSON.stringify(r.errors));
-            assert.equal(r.data.activityRanking.stale, false);
             assert.equal(r.data.activityRanking.activities[0].days.length, 7);
           }
         } else {
-          // Outage: the last forecast is served as stale while it still has future days, else a typed error.
-          const outlived = last === undefined || isoDay(clock.now) > isoDay(last + 7 * 24 * HOUR);
-          for (const r of results) {
-            if (outlived) assert.equal(r.errors?.[0].extensions.code, 'UPSTREAM_UNAVAILABLE', JSON.stringify(r));
-            else assert.equal(r.data.activityRanking.stale, true, JSON.stringify(r));
-          }
+          for (const r of results) assert.equal(r.errors?.[0].extensions.code, 'UPSTREAM_UNAVAILABLE', JSON.stringify(r));
         }
       }
     }),
